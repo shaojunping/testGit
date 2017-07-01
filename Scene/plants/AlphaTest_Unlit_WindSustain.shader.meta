@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: e3aab2c4de1f67b43a61d3ed0287a3d9
+timeCreated: 1480932427
+licenseType: Pro
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: game/map/map_allshader
+  assetBundleVariant: p
