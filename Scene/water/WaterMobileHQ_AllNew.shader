@@ -93,7 +93,7 @@ Shader "TSHD/WaterMobileHQ_All_New"
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
 				// 通过深度混合扭曲后的GrapTexture
-				fixed depthFactor   = saturate((sceneZ - objectZ));
+				fixed depthFactor   = saturate((sceneZ - objectZ))*_DepthFactor;
 				//fixed3 shallowColor = lerp();
 				fixed3 finalColor	= lerp(_ShallowColor, _DeepColor, depthFactor);
 
