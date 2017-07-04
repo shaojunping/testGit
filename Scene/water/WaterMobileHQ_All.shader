@@ -6,19 +6,16 @@ Shader "TSHD/WaterMobileHQ_All"
 {
 	Properties
 	{
-		_WaterTex ("Normal Map (RGB)", 2D) = "white" {}
-		_DarkerTex ("Darker (RGB)", 2D) = "white" {}
+		_WaterBumpTex ("Normal Map (RGB)", 2D) = "white" {}
         //_RefractTex ("Refract Map",2D) ="white" {}
-        _MainTex ("WaterMap Deep(R),Alpha (G)", 2D) = "white" {}
+        _DeepTex ("WaterMap Deep(R),Alpha (G)", 2D) = "white" {}
 		_Cube ("Skybox", Cube) = "_Skybox" { }
-		_ShadowColor ("Shallow Color", Color) = (1,1,1,1)
+		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
 		_Specular ("Specular", Color) = (0,0,0,0)
         _OffsetSpeed("Offset Speed",float) =1.0
         _SpeScale("Specular Scale",float) =1.0
 
-
-		_DarkerScale("DarkerScale", Range(0.01, 1.0))= 0.4
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
 		_Tiling ("Tiling", Range(0.025, 0.5)) = 0.025
 		_ReflectionTint ("Reflection Tint", Range(0.0, 1.0)) = 0.8
@@ -30,19 +27,17 @@ Shader "TSHD/WaterMobileHQ_All"
 
 	#include "UnityCG.cginc"
 	
-	half4 _ShadowColor;
+	half4 _ShallowColor;
 	half4 _DeepColor;
 	half4 _Specular;
 	float _Shininess;
-	float _DarkerScale;
-	float _Tiling;
+	float _Tiling;              //control the size of wade
 	float _ReflectionTint;
 	half4 _InvRanges;
     fixed _SpeScale;
 	half4 _lightDir;
     //sampler2D_float _CameraDepthTexture;
-	sampler2D _WaterTex;
-	sampler2D _DarkerTex;
+	sampler2D _WaterBumpTex;
 
 	half4 LightingPPL (SurfaceOutput s, half3 lightDir, half3 viewDir, half atten)
 	{
@@ -65,7 +60,7 @@ Shader "TSHD/WaterMobileHQ_All"
         //c.rgb *= (atten * 2.0)*_InvRanges.w;
         c.rgb *= 2*_InvRanges.w;
         c.a = s.Alpha;
-
+		c.a = 1;
 		return c;
 	}
 	ENDCG
@@ -78,8 +73,17 @@ Shader "TSHD/WaterMobileHQ_All"
 
         ZWrite Off
         Blend SrcAlpha OneMinusSrcAlpha
-
+		//BlendOp Min
+		//Blend Zero One
+		//GrabPass { "_GrabTexture" }
 		CGPROGRAM
+		//the position of PPL describes what LightMode the shader uses
+		//nolightmap - Disables all lightmapping support in this shader.
+		//noambient - Do not apply any ambient lighting or light probes.
+		//nometa - Does not generate a ¡°meta¡± pass (that¡¯s used by lightmapping & dynamic global illumination to extract surface information).
+		//noforwardadd - Disables Forward rendering additive pass. This makes the shader support one full directional light, with all other lights computed per-vertex/SH. Makes shaders smaller as well.
+		//exclude_path:deferred, exclude_path:forward, exclude_path:prepass - Do not generate passes for given rendering path (Deferred Shading, Forward and Legacy Deferred respectively).
+		//alpha:blend - Enable alpha blending.
 		#pragma surface surf PPL vertex:vert noambient nolightmap nometa noforwardadd exclude_path:deferred exclude_path:prepass alpha:blend
         #pragma target 3.0
         //#pragma multi_compile _CUSTOMDEPTH_OFF  _CUSTOMDEPTH
@@ -93,7 +97,7 @@ Shader "TSHD/WaterMobileHQ_All"
         sampler2D_float _LastCameraDepthTexture;
 //#endif
 
-        uniform sampler2D _MainTex;
+        uniform sampler2D _DeepTex;
         uniform sampler2D _RefractTex;
         uniform half4 _RefractTex_TexelSize;
 		struct Input
@@ -131,7 +135,7 @@ Shader "TSHD/WaterMobileHQ_All"
 			float3 worldView = IN.worldPos - _WorldSpaceCameraPos;
 			
 			// Calculate the object-space normal (Z-up)
-            half4 nmap = tex2D(_WaterTex, IN.tilings.xy) + tex2D(_WaterTex, IN.tilings.zw);
+            half4 nmap = tex2D(_WaterBumpTex, IN.tilings.xy) + tex2D(_WaterBumpTex, IN.tilings.zw);
 			o.Normal = nmap.xyz - 1.0;
 
 			// Fake World space normal (Y-up)
@@ -153,16 +157,20 @@ Shader "TSHD/WaterMobileHQ_All"
             depth -= IN.proj0.z;
 ////Very Important!!!!!! or else we'll get incorrect depth on Android
             depth =saturate(depth); 
-
+			
             // Calculate the depth ranges (X = Alpha, Y = Color Depth)
             half3 ranges = _InvRanges.xyz * depth;
+            //half3 ranges = _InvRanges.xyz;
+
             ranges.y = saturate(1.0 - ranges.y);
 
             half4 col =half4(1.0,1.0,1.0,1.0) ;
-            col.rgb = lerp(_DeepColor.rgb, _ShadowColor.rgb, ranges.y);
+            //col.rgb = lerp(_DeepColor.rgb, _ShallowColor.rgb, ranges.y);
+			col.rgb = lerp(_DeepColor.rgb, _ShallowColor.rgb, ranges.y);
             col.a = saturate(ranges.z +ranges.x);
 
             o.Alpha = col.a;
+			o.Alpha = 1;
             o.Specular = col.a;
             o.Gloss = _Shininess;
 
@@ -174,8 +182,6 @@ Shader "TSHD/WaterMobileHQ_All"
             //we use refract tex instead of grab pass tex
             IN.screenPos.xy += o.Normal.xy * _RefractTex_TexelSize.xy * (20.0 * IN.screenPos.z * col.a);
             half3 refraction = tex2Dproj(_RefractTex,UNITY_PROJ_COORD(IN.screenPos)).rgb;
-            half3 darkerColor = tex2D(_DarkerTex, IN.tilings.xy).xyz;
-			refraction = lerp(refraction, darkerColor, _DarkerScale);
             refraction = lerp(refraction * col.rgb, refraction, ranges.y);
 			
             half3 reflection = texCUBE(_Cube, reflect(worldView, worldNormal)).rgb * _ReflectionTint;
@@ -199,9 +205,12 @@ SubShader
 		Lod 250
 		Tags { "Queue" = "Transparent-10" }
 
-        Blend SrcAlpha OneMinusSrcAlpha
+        //Blend SrcAlpha OneMinusSrcAlpha
         //ZTest LEqual
 		ZWrite Off
+		//BlendOp Min
+		//Blend Zero One
+		GrabPass { "_GrabTexture" }
 
 		CGPROGRAM
 		#pragma surface surf PPL vertex:vert noambient nolightmap nometa noforwardadd exclude_path:deferred exclude_path:prepass alpha:blend
@@ -212,7 +221,7 @@ SubShader
         uniform sampler2D _RefractTex;
         uniform half4 _RefractTex_TexelSize;
 
-        uniform sampler2D _MainTex;
+        uniform sampler2D _DeepTex;
 
 		struct Input
 		{
@@ -246,19 +255,19 @@ SubShader
 			float3 worldView = (IN.worldPos - _WorldSpaceCameraPos);
 			
 			// Calculate the object-space normal (Z-up)
-            half4 nmap = tex2D(_WaterTex, IN.tilings.xy) + tex2D(_WaterTex, IN.tilings.zw);
+            half4 nmap = tex2D(_WaterBumpTex, IN.tilings.xy) + tex2D(_WaterBumpTex, IN.tilings.zw);
             o.Normal = nmap.xyz - 1.0;
 			// World space normal (Y-up)
 			half3 worldNormal = o.Normal.xzy;
 			worldNormal.z = -worldNormal.z;
 		
-            float depth =tex2D(_MainTex,IN.uv_MainTex).g;
+            float depth =tex2D(_DeepTex,IN.uv_MainTex).g;
             // Calculate the depth ranges (X = Alpha, Y = Color Depth)
             half3 ranges = _InvRanges.xyz * depth;
             ranges.y = saturate(1.0 - ranges.y);
 
             half4 col ;
-            col.rgb = lerp(_DeepColor.rgb, _ShadowColor.rgb, ranges.y);
+            col.rgb = lerp(_DeepColor.rgb, _ShallowColor.rgb, 1);
             col.a = saturate(ranges.z +ranges.x);
 
             // Initial material properties
@@ -291,10 +300,12 @@ SubShader
 		Lod 200
 		Tags { "Queue" = "Transparent-10" }
 
-        Blend SrcAlpha OneMinusSrcAlpha
+        //Blend SrcAlpha OneMinusSrcAlpha
         //ZTest LEqual
 		ZWrite Off
-
+		//BlendOp Min
+		//Blend Zero One
+		GrabPass { "_GrabTexture" }
 		CGPROGRAM
 		#pragma surface surf PPL vertex:vert noambient nolightmap nometa noforwardadd exclude_path:deferred exclude_path:prepass alpha:blend
         #pragma target 3.0
@@ -304,7 +315,7 @@ SubShader
         uniform sampler2D _RefractTex;
         uniform half4 _RefractTex_TexelSize;
 
-        uniform sampler2D _MainTex;
+        uniform sampler2D _DeepTex;
 
 		struct Input
 		{
@@ -330,14 +341,14 @@ SubShader
 		{
 			float3 worldView = (IN.worldPos - _WorldSpaceCameraPos);
 			
-            half4 nmap = tex2D(_WaterTex, IN.tilings.xy) + tex2D(_WaterTex, IN.tilings.zw);
+            half4 nmap = tex2D(_WaterBumpTex, IN.tilings.xy) + tex2D(_WaterBumpTex, IN.tilings.zw);
             o.Normal = nmap.xyz - 1.0;
 
 			// World space normal (Y-up)
 			half3 worldNormal = o.Normal.xzy;
 			worldNormal.z = -worldNormal.z;
 		    
-            float3 mainC =tex2D(_MainTex,IN.uv_MainTex).rgb;
+            float3 mainC =tex2D(_DeepTex,IN.uv_MainTex).rgb;
             float depth =mainC.g;
 
 // Calculate the depth ranges (X = Alpha, Y = Color Depth)
@@ -345,7 +356,7 @@ SubShader
             ranges.y = saturate(1.0 - ranges.y);
 
             half4 col ;
-            col.rgb = lerp(_DeepColor.rgb, _ShadowColor.rgb, ranges.y);
+            col.rgb = lerp(_DeepColor.rgb, _ShallowColor.rgb, ranges.y);
             col.a = saturate(ranges.z +ranges.x);
 
             // Initial material properties
@@ -358,7 +369,7 @@ SubShader
 
             half3 reflection = texCUBE(_Cube, reflect(worldView, worldNormal)).rgb * _ReflectionTint;
 
-            half3  refraction = lerp(_ShadowColor.rgb, _DeepColor.rgb,mainC.r);
+            half3  refraction = lerp(_ShallowColor.rgb, _DeepColor.rgb,mainC.r);
             refraction *=col.rgb ; 
 
             fresnel *= fresnel;
