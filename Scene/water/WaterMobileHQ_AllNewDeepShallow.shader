@@ -24,6 +24,8 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		Pass
 		{
 			Tags { "Queue" = "Transparent" "IgnoreProjector"="True" "RenderType"="Opaque" }
+
+			//ZWrite Off
 			Blend SrcAlpha OneMinusSrcAlpha
 			CGPROGRAM
 			#include "UnityCG.cginc"
@@ -122,29 +124,24 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				// Calculate the object-space normal (Z-up)
 				half4 nmap = tex2D(_WaterTex, i.tilings.xy) + tex2D(_WaterTex, i.tilings.zw);
 				half3 Normal = nmap.xyz - 1.0;
+				half3 nNormal = normalize(Normal);
 
 				// Fake World space normal (Y-up)
 				half3 worldNormal = Normal.xzy;
 				worldNormal.z = -worldNormal.z;
 
 				half3 lightDir = normalize(_lightDir.xyz);
-				half diffuseFactor = max(0.0, dot(normalize(Normal), lightDir));
+				half diffuseFactor = max(0.0, dot(nNormal, lightDir));
 				finalColor *= diffuseFactor;
 
-				//half3 h = normalize (_WorldSpaceLightPos0.xyz + viewDir);
-				//half nh = max (0, dot (bump, h));
-				//half spec = pow (nh, _Shininess*128.0) * _Specular.a;
-				//finalColor += _Specular.rgb * spec*depthFactor;
+				half reflectiveFactor = max(0.0, dot(-worldView, reflect(lightDir, nNormal)));
+				//half specularFactor = pow(reflectiveFactor, shininess) * _Specular*_SpeScale;
 
-				//float3 worldPos = float3(i.TtoW0.w, i.TtoW1.w, i.TtoW2.w);
-				//half3 viewDir = normalize(UnityWorldSpaceViewDir(worldPos));
-				//float transparentFactor = _TransparentFactor * depthFactor;
-				//return fixed4(finalColor, 1);
-				//finalColor = grabColor;
-				//finalColor = lerp(grapColor, finalColor, transparentFactor);
-				//finalColor = fixed3(depthFactor, depthFactor, depthFactor);
+				half3 h = normalize (_lightDir.xyz + worldView);
+				half nh = max (0, dot (worldNormal, h));
+				half spec = pow (nh, _Shininess*128.0);
+				finalColor += _Specular.rgb * spec;
 				return fixed4(finalColor.rgb, 1);
-				//return fixed4(diffuseFactor,diffuseFactor,diffuseFactor,1);
 			}
 			ENDCG
 		}
