@@ -15,6 +15,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		_Specular ("Specular", Color) = (0,0,0,0)
 		_SpeScale("Specular Scale",float) =1.0
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
+		_lightDir ("Light Dir(XYZ)", Vector) = (1.0, 1.0, 1.0, 1.0)
 	}
 
 
@@ -46,6 +47,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			half4 _Specular;
 			fixed _SpeScale;
 			float _Shininess;
+			half4 _lightDir;
 
 			struct a2v
 			{
@@ -58,16 +60,17 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			struct v2f
 			{
 				float4 pos		: SV_POSITION;
+				float3 worldPos : TEXCOORD1;
 				float4 tilings	: TEXCOORD0;
 				// 用于切线空间的计算
-				float4 TtoW0 : TEXCOORD1;  
-				float4 TtoW1 : TEXCOORD2;  
-				float4 TtoW2 : TEXCOORD3;
-				UNITY_FOG_COORDS(4)
+				//float4 TtoW0 : TEXCOORD1;  
+				//float4 TtoW1 : TEXCOORD2;  
+				//float4 TtoW2 : TEXCOORD3;
+				UNITY_FOG_COORDS(3)
 				// 屏幕位置
-				float4 screenPos : TEXCOORD5;
+				float4 screenPos : TEXCOORD2;
 				//fixed4 tilings :TEXCOORD6;
-				float4 bumpUV		: TEXCOORD6;
+				//float4 bumpUV		: TEXCOORD6;
 				// 用于修复GrasTexture反向问题
 				//float4 uvgrab : TEXCOORD6;
 			};
@@ -78,27 +81,29 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				UNITY_INITIALIZE_OUTPUT(v2f,o);
 				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
 
-				float3 worldPos = mul (unity_ObjectToWorld, v.vertex).xyz;
-				fixed3 worldNormal = UnityObjectToWorldNormal(v.normal);
-				fixed3 worldTangent = UnityObjectToWorldDir(v.tangent.xyz);
-				fixed3 worldBinormal = cross(worldNormal, worldTangent) * v.tangent.w;
+				//float3 worldPos = mul (unity_ObjectToWorld, v.vertex).xyz;
+				//fixed3 worldNormal = UnityObjectToWorldNormal(v.normal);
+				//fixed3 worldTangent = UnityObjectToWorldDir(v.tangent.xyz);
+				//fixed3 worldBinormal = cross(worldNormal, worldTangent) * v.tangent.w;
 
-				// 转到切线空间
-				o.TtoW0 = float4(worldTangent.x, worldBinormal.x, worldNormal.x, worldPos.x);  
-				o.TtoW1 = float4(worldTangent.y, worldBinormal.y, worldNormal.y, worldPos.y);  
-				o.TtoW2 = float4(worldTangent.z, worldBinormal.z, worldNormal.z, worldPos.z);  
+				//// 转到切线空间
+				//o.TtoW0 = float4(worldTangent.x, worldBinormal.x, worldNormal.x, worldPos.x);  
+				//o.TtoW1 = float4(worldTangent.y, worldBinormal.y, worldNormal.y, worldPos.y);  
+				//o.TtoW2 = float4(worldTangent.z, worldBinormal.z, worldNormal.z, worldPos.z); 
+				
+				o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
 				
 				// 屏幕位置
 				o.screenPos = ComputeScreenPos(o.pos);
 
-				float offset = _Time.x * 0.5* _OffsetSpeed;
-				fixed2 tiling = worldPos.xz * _Tiling;
+				float offset = frac(_Time.x * 0.5* _OffsetSpeed);
+				fixed2 tiling = o.worldPos.xz * _Tiling;
 				o.tilings.xy = tiling + offset;
 				o.tilings.zw = fixed2(-tiling.y, tiling.x) - offset;
 
 				// grabUV
 				//o.uvgrab = ComputeGrabScreenPos(o.pos);
-				UNITY_TRANSFER_FOG(o,o.pos);
+				//UNITY_TRANSFER_FOG(o,o.pos);
 				return o;
 			}
 
@@ -106,23 +111,31 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			{
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
-				// 通过深度混合扭曲后的GrapTexture
+
 				fixed depthFactor   = saturate((sceneZ - objectZ))*_DepthFactor;
 				//fixed3 shallowColor = lerp();
 				fixed3 finalColor	= lerp(_ShallowColor, _DeepColor, depthFactor);
 
 				// 世界位置
-				float3 worldPos = float3(i.TtoW0.w, i.TtoW1.w, i.TtoW2.w);
+				float3 worldView = i.worldPos - _WorldSpaceCameraPos;
 
-				// 视图向量
-				half3 viewDir	= normalize(UnityWorldSpaceViewDir(worldPos));
+				// Calculate the object-space normal (Z-up)
+				half4 nmap = tex2D(_WaterTex, i.tilings.xy) + tex2D(_WaterTex, i.tilings.zw);
+				half3 Normal = nmap.xyz - 1.0;
 
-				half3 bump1 = UnpackNormal(tex2D(_WaterTex, i.tilings.xy)).rgb;
-				half3 bump2 = UnpackNormal(tex2D(_WaterTex, i.tilings.zw)).rgb;
-				half3 bump = bump1;
-				// Normal转换到世界空间
-				bump = normalize(half3(dot(i.TtoW0.xyz, bump), dot(i.TtoW1.xyz, bump), dot(i.TtoW2.xyz, bump)));
-				half value = dot(viewDir, bump);
+				// Fake World space normal (Y-up)
+				half3 worldNormal = Normal.xzy;
+				worldNormal.z = -worldNormal.z;
+
+				half3 lightDir = normalize(_lightDir.xyz);
+				half diffuseFactor = max(0.0, dot(normalize(Normal), lightDir));
+				finalColor *= diffuseFactor;
+
+				//half3 h = normalize (_WorldSpaceLightPos0.xyz + viewDir);
+				//half nh = max (0, dot (bump, h));
+				//half spec = pow (nh, _Shininess*128.0) * _Specular.a;
+				//finalColor += _Specular.rgb * spec*depthFactor;
+
 				//float3 worldPos = float3(i.TtoW0.w, i.TtoW1.w, i.TtoW2.w);
 				//half3 viewDir = normalize(UnityWorldSpaceViewDir(worldPos));
 				//float transparentFactor = _TransparentFactor * depthFactor;
@@ -130,7 +143,8 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				//finalColor = grabColor;
 				//finalColor = lerp(grapColor, finalColor, transparentFactor);
 				//finalColor = fixed3(depthFactor, depthFactor, depthFactor);
-				return fixed4(finalColor * value, 1);
+				return fixed4(finalColor.rgb, 1);
+				//return fixed4(diffuseFactor,diffuseFactor,diffuseFactor,1);
 			}
 			ENDCG
 		}
