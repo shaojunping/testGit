@@ -9,7 +9,7 @@ Shader "TSHD/WaterMobileHQ_All_New1"
 		[NoScaleOffset]_WaterBumpTex ("Normal Map (RGB)", 2D) = "white" {}
 		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
-		_DepthFactor ("Depth Factor", Range(0, 1)) = 0.5
+		_DepthFactor ("Depth Factor", Range(0, 20)) = 10
 		_BumpScale("Wave Z Intensity", Range(0, 2)) = 0.7
 		_BumpTiling("Wave Bump Tiling", Range(10, 200)) = 40
 		_Cubemap("Skybox", Cube) = "_Skybox" {}
@@ -106,7 +106,7 @@ Shader "TSHD/WaterMobileHQ_All_New1"
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
 				// 通过深度混合扭曲后的GrapTexture
-				fixed depthFactor   = saturate((sceneZ - objectZ))* _DepthFactor;
+				fixed depthFactor   = clamp((sceneZ - objectZ) / _DepthFactor, 0, 1);
 				//fixed3 shallowColor = lerp();
 				fixed3 diffuse	= lerp(_ShallowColor, _DeepColor, depthFactor);
 
@@ -117,7 +117,7 @@ Shader "TSHD/WaterMobileHQ_All_New1"
 				fixed3 worldViewDir = normalize(i.worldViewDir);	
 
 				// Use the reflect dir in world space to access the cubemap     
-				fixed3 reflection = texCUBE(_Cubemap, i.worldRefl).rgb * _ReflectColor.rgb;
+				fixed3 reflection = texCUBE(_Cubemap, i.worldRefl).rgb * _ReflectColor.rgb*_ReflectAmount;
 
 				//// Dot product for fresnel effect
 				//half reflDir = reflect(viewDir, bump);
@@ -128,8 +128,8 @@ Shader "TSHD/WaterMobileHQ_All_New1"
 				//half3 cubemapCol = texCUBE(_Cubemap, reflDir).rgb;
 				////half3 reflection = lerp(_ShallowColor, cubemapCol, _CubemapInstensity);
 				//fixed3 finalColor = lerp(cubemapCol, refractionColor, 1 - fresnel);
-				//finalColor = cubemapCol;
-				fixed3 finalColor = lerp(reflection, refractionColor, _ReflectAmount);
+				//finalColor = cubemapCol; , _ReflectAmount)
+				fixed3 finalColor = refractionColor;
 				return fixed4(finalColor, 1);
 			}
 			ENDCG
