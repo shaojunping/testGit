@@ -9,7 +9,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		_WaterTex ("Normal Map (RGB), Foam (A)", 2D) = "white" {}
 		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
-		_DepthFactor ("Depth Factor", Range(0, 1)) = 0.5
+		_DepthFactor ("Depth Factor", Range(0, 6)) = 0.5
 		_OffsetSpeed("Offset Speed",float) =1.0
 		_Tiling ("Tiling", Range(0.025, 0.5)) = 0.025
 		_Specular ("Specular", Color) = (0,0,0,0)
@@ -114,10 +114,10 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
 
-				fixed depthFactor   = saturate((sceneZ - objectZ))*_DepthFactor;
+				fixed depthFactor   = saturate((sceneZ - objectZ)) * _DepthFactor;
 				//fixed3 shallowColor = lerp();
 				fixed3 finalColor	= lerp(_ShallowColor, _DeepColor, depthFactor);
-
+				//return fixed4(finalColor, 1);
 				//  ¿ΩÁŒª÷√
 				float3 worldView = i.worldPos - _WorldSpaceCameraPos;
 
