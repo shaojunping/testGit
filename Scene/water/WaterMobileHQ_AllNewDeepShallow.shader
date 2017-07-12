@@ -6,15 +6,17 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 {
 	Properties
 	{
-		_WaterTex ("Normal Map (RGB), Foam (A)", 2D) = "white" {}
-		_FoamTex ("Foam Map (RGB)", 2D) = "black" {}
+		[NoScaleOffset]_WaterTex ("Normal Map (RGB), Foam (A)", 2D) = "white" {}
+		[NoScaleOffset]_FoamTex ("Foam Map (RGB)", 2D) = "black" {}
 		_Cube ("Skybox", Cube) = "_Skybox" { }
 		//_NoiseTex ("Noise Map (RGB)", 2D) = "black" {}
 		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
 		//_DepthFactor ("Depth Factor", Range(0, 6)) = 0.5
-		_OffsetSpeed("Offset Speed",float) =1.0
-		_Tiling ("Tiling", Range(0.025, 0.5)) = 0.025
+		_OffsetSpeedX("Offset SpeedX",float) =1.0
+		_OffsetSpeedY("Offset SpeedY",float) =1.0
+		_Tiling ("Normal Tiling", Range(0.025, 0.5)) = 0.025
+		_FoamTiling ("Foam Tiling", Range(0.025, 0.5)) = 0.025
 		_Specular ("Specular", Color) = (0,0,0,0)
 		_SpeScale("Specular Scale",float) =1.0
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
@@ -47,19 +49,23 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 
 			float	  _DepthFactor;
 			fixed	  _Tiling;
+			fixed	  _FoamTiling;
 			//float _TransparentFactor;
 
 			// CameraDepth
 			sampler2D_float _LastCameraDepthTexture;
 			sampler2D _WaterTex;
 			sampler2D _FoamTex;
+			float4    _WaterTex_ST;
+			float4    _FoamTex_ST;
 			samplerCUBE _Cube;
 
 			//sampler2D _NoiseTex;
 
 			half4 _ShallowColor;
 			half4 _DeepColor;
-			fixed _OffsetSpeed;
+			half _OffsetSpeedX;
+			half _OffsetSpeedY;
 			
 			half4 _Specular;
 			fixed _SpeScale;
@@ -89,7 +95,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			{
 				float4 pos		: SV_POSITION;
 				float3 worldPos : TEXCOORD1;
-				float4 tilings	: TEXCOORD0;
+				float4 tilings	: TEXCOORD0;    //xy for for normal, zw for foam
 				// 用于切线空间的计算
 				//float4 TtoW0 : TEXCOORD1;  
 				//float4 TtoW1 : TEXCOORD2;  
@@ -97,6 +103,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				UNITY_FOG_COORDS(3)
 				// 屏幕位置
 				float4 screenPos : TEXCOORD2;
+				float4 foamTilings    : TEXCOORD4;
 			};
 
 			v2f vert(a2v v)
@@ -111,6 +118,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				//v.vertex.z += waveHeightOffset;
 				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
 
+				//o.foamUv = v.
 				//float3 worldPos = mul (unity_ObjectToWorld, v.vertex).xyz;
 				//fixed3 worldNormal = UnityObjectToWorldNormal(v.normal);
 				//fixed3 worldTangent = UnityObjectToWorldDir(v.tangent.xyz);
@@ -126,11 +134,21 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				// 屏幕位置
 				o.screenPos = ComputeScreenPos(o.pos);
 
-				float offset = frac(_Time.x * 0.5* _OffsetSpeed);
-				fixed2 tiling = o.worldPos.xz * _Tiling;
-				o.tilings.xy = tiling + offset; //
-				o.tilings.zw = fixed2(-tiling.y, tiling.x) - offset;
+				float offsetX = frac( _Time.x *_OffsetSpeedX);
+				half2 tiling = o.worldPos.xz * _Tiling;
+				o.tilings.xy = tiling + offsetX;
+				float offsetY = frac( _Time.x *_OffsetSpeedY);
+				o.tilings.zw = half2(-tiling.y, tiling.x) - offsetY;
 
+				//float offsetX = frac(_Time.x * _OffsetSpeedX);
+				////fixed tilingX = o.worldPos.x * _WaterTex_ST.x  + offsetX;
+				////o.tilings.xy = tilingX + offsetX; //
+				//float offsetY = frac(_Time.x * _OffsetSpeedY);
+				////fixed tilingY = o.worldPos.z * _WaterTex_ST.x  + offsetY;
+				//o.tilings.xy = o.worldPos.xz + fixed2(offsetX, offsetY);
+				//o.tilings.zw = fixed2(-o.tilings.y, o.tilings.x) - fixed2(offsetX, offsetY);
+				////o.tilings.xy = v.texcoord.xy * _WaterTex_ST.xy + _WaterTex_ST.zw + float2(offsetX, offsetY);
+				////o.tilings.zw = v.texcoord.xy * _FoamTex_ST.xy + _WaterTex_ST.zw + float2(offsetX, offsetY);
 				return o;
 			}
 
@@ -175,18 +193,21 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				half3 emission = albedo * (1 - fresnel);
 				albedo *= fresnel;
 
-				half3 nNormal = normalize(Normal);
-				half  shininess = _Shininess * 128.0 + 4.0;
+				half3 nNormal = normalize(worldNormal);
+				half  shininess = _Shininess * 128.0;
 
 				half3 lightDir = normalize(_lightDir.xyz);
-				//half diffuseFactor = max(0.0, dot(nNormal, -lightDir));
+				half diffuseFactor = max(0.0, dot(-nNormal, -lightDir));
 				//return fixed4(albedo , alpha);
-				half reflectiveFactor = max(0.0, dot(-worldView, reflect(lightDir, nNormal)));
-				half specularFactor = pow(reflectiveFactor, shininess) * _Specular*_SpeScale;
-
+				half reflectiveFactor = max(0.0, dot(worldView, reflect(lightDir, nNormal)));
+				half3 h = normalize(lightDir + worldView);
+				float nh = max(0, dot(-nNormal, h));
+				half specularFactor = pow(nh, shininess) * _Specular*_SpeScale;
+				//return half4(albedo, alpha);
 				half4 c;
-				c.rgb = (albedo /** diffuseFactor*/ + _Specular * specularFactor);
-				//return fixed4(c.rgb, alpha);
+				c.rgb = (albedo * diffuseFactor + _Specular * specularFactor);
+				//return fixed4(albedo.rgb * diffuseFactor, alpha);
+				//return fixed4((_Specular.rgb* specularFactor), alpha);
 				c.rgb *= 2 * _LightScale;
 				c.a = alpha;
 				return c;
