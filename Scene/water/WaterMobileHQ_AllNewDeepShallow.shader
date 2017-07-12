@@ -7,17 +7,19 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 	Properties
 	{
 		_WaterTex ("Normal Map (RGB), Foam (A)", 2D) = "white" {}
+		_FoamTex ("Foam Map (RGB)", 2D) = "black" {}
+		_NoiseTex ("Noise Map (RGB)", 2D) = "black" {}
 		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
-		_DepthFactor ("Depth Factor", Range(0, 6)) = 0.5
+		//_DepthFactor ("Depth Factor", Range(0, 6)) = 0.5
 		_OffsetSpeed("Offset Speed",float) =1.0
 		_Tiling ("Tiling", Range(0.025, 0.5)) = 0.025
 		_Specular ("Specular", Color) = (0,0,0,0)
 		_SpeScale("Specular Scale",float) =1.0
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
 		_lightDir ("Light Dir(XYZ)", Vector) = (1.0, 1.0, 1.0, 1.0)
+		_InvRanges ("Alpha OffSet(X), Depth OffSet(Y) ,Alpha Scale(Z),Amb Scale(W)", Vector) = (0.0, 0.5, 1.0, 1.0)
 	}
-
 
 	SubShader
 	{
@@ -41,6 +43,8 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			// CameraDepth
 			sampler2D_float _LastCameraDepthTexture;
 			sampler2D _WaterTex;
+			sampler2D _FoamTex;
+			sampler2D _NoiseTex;
 
 			half4 _ShallowColor;
 			half4 _DeepColor;
@@ -50,6 +54,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			fixed _SpeScale;
 			float _Shininess;
 			half4 _lightDir;
+			half4 _InvRanges;
 
 			struct a2v
 			{
@@ -103,9 +108,6 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				o.tilings.xy = tiling + offset;
 				o.tilings.zw = fixed2(-tiling.y, tiling.x) - offset;
 
-				// grabUV
-				//o.uvgrab = ComputeGrabScreenPos(o.pos);
-				//UNITY_TRANSFER_FOG(o,o.pos);
 				return o;
 			}
 
@@ -114,15 +116,18 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
 
-				fixed depthFactor   = saturate((sceneZ - objectZ)) * _DepthFactor;
+				fixed depthFactor   = saturate((sceneZ - objectZ)) * _InvRanges.y;
 				//fixed3 shallowColor = lerp();
 				fixed3 finalColor	= lerp(_ShallowColor, _DeepColor, depthFactor);
 				//return fixed4(finalColor, 1);
 				// ÊÀ½çÎ»ÖÃ
 				float3 worldView = i.worldPos - _WorldSpaceCameraPos;
 
+				half4 noise = tex2D(_NoiseTex, i.tilings.xy);
+				half4 foam = tex2D(_FoamTex, i.tilings.zw);
 				// Calculate the object-space normal (Z-up)
 				half4 nmap = tex2D(_WaterTex, i.tilings.xy) + tex2D(_WaterTex, i.tilings.zw);
+				half4 nmap2 = tex2D(_WaterTex, i.tilings.xy) + tex2D(_WaterTex, i.tilings.zw);
 				half3 Normal = nmap.xyz - 1.0;
 				half3 nNormal = normalize(Normal);
 
@@ -141,7 +146,14 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				half nh = max (0, dot (worldNormal, h));
 				half spec = pow (nh, _Shininess*128.0);
 				finalColor += _Specular.rgb * spec;
-				return fixed4(finalColor.rgb, 1);
+
+				//float depth = abs(sceneZ - objectZ);
+				//if(objectZ > sceneZ)
+				//    finalColor.rgb = half3(1, 1, 1); //- foam.a*4
+				//finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 );
+				//finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 - noise.r/2);
+				finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, nmap2.a);
+				return fixed4(finalColor.rgb * _InvRanges.w, 0.85);
 			}
 			ENDCG
 		}
