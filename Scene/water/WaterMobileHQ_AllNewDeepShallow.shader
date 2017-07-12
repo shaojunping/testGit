@@ -16,7 +16,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		_OffsetSpeedX("Offset SpeedX",float) =1.0
 		_OffsetSpeedY("Offset SpeedY",float) =1.0
 		_Tiling ("Normal Tiling", Range(0.025, 0.5)) = 0.025
-		_FoamTiling ("Foam Tiling", Range(0.025, 0.5)) = 0.025
+		_FoamTiling ("Foam Tiling", Range(0.025, 5)) = 0.025
 		_Specular ("Specular", Color) = (0,0,0,0)
 		_SpeScale("Specular Scale",float) =1.0
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
@@ -102,7 +102,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				//float4 TtoW2 : TEXCOORD3;
 				UNITY_FOG_COORDS(3)
 				// 屏幕位置
-				float4 screenPos : TEXCOORD2;
+				float4 screenPos	  : TEXCOORD2;
 				float4 foamTilings    : TEXCOORD4;
 			};
 
@@ -113,22 +113,8 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float4 pos = v.vertex;
 				float waveOffset = sin(_Time.w * _WaveWindSpeed + pos.x * 0.1) * _WaveWindScale;
 				float waveHeightOffset = sin(_Time.w * _WaveHeightSpeed + pos.z * 0.1) * _WaveHeightScale;
-				//v.vertex.x += waveOffset;
-				//v.vertex.y += waveHeightOffset;
-				//v.vertex.z += waveHeightOffset;
-				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
-
-				//o.foamUv = v.
-				//float3 worldPos = mul (unity_ObjectToWorld, v.vertex).xyz;
-				//fixed3 worldNormal = UnityObjectToWorldNormal(v.normal);
-				//fixed3 worldTangent = UnityObjectToWorldDir(v.tangent.xyz);
-				//fixed3 worldBinormal = cross(worldNormal, worldTangent) * v.tangent.w;
-
-				//// 转到切线空间
-				//o.TtoW0 = float4(worldTangent.x, worldBinormal.x, worldNormal.x, worldPos.x);  
-				//o.TtoW1 = float4(worldTangent.y, worldBinormal.y, worldNormal.y, worldPos.y);  
-				//o.TtoW2 = float4(worldTangent.z, worldBinormal.z, worldNormal.z, worldPos.z); 
 				
+				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
 				o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
 				
 				// 屏幕位置
@@ -140,15 +126,11 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float offsetY = frac( _Time.x *_OffsetSpeedY);
 				o.tilings.zw = half2(-tiling.y, tiling.x) - offsetY;
 
-				//float offsetX = frac(_Time.x * _OffsetSpeedX);
-				////fixed tilingX = o.worldPos.x * _WaterTex_ST.x  + offsetX;
-				////o.tilings.xy = tilingX + offsetX; //
-				//float offsetY = frac(_Time.x * _OffsetSpeedY);
-				////fixed tilingY = o.worldPos.z * _WaterTex_ST.x  + offsetY;
-				//o.tilings.xy = o.worldPos.xz + fixed2(offsetX, offsetY);
-				//o.tilings.zw = fixed2(-o.tilings.y, o.tilings.x) - fixed2(offsetX, offsetY);
-				////o.tilings.xy = v.texcoord.xy * _WaterTex_ST.xy + _WaterTex_ST.zw + float2(offsetX, offsetY);
-				////o.tilings.zw = v.texcoord.xy * _FoamTex_ST.xy + _WaterTex_ST.zw + float2(offsetX, offsetY);
+				//float offsetX = frac( _Time.x *_OffsetSpeedX);
+				half2 foamTiling = o.worldPos.xz * _FoamTiling;
+				o.foamTilings.xy = foamTiling + offsetX;
+				//float offsetY = frac( _Time.x *_OffsetSpeedY);
+				o.foamTilings.zw = half2(-foamTiling.y, foamTiling.x) - offsetY;
 				return o;
 			}
 
@@ -165,7 +147,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float3 worldView = i.worldPos - _WorldSpaceCameraPos;
 
 				//half4 noise = tex2D(_NoiseTex, i.tilings.xy);
-				half4 foam = tex2D(_FoamTex, i.tilings.zw);
+				half4 foam = tex2D(_FoamTex, i.foamTilings.zw + i.foamTilings.xy);
 				// Calculate the object-space normal (Z-up)
 				half4 nmap = tex2D(_WaterTex, i.tilings.xy) ;//+ tex2D(_WaterTex, i.tilings.zw);
 				half4 nmap2 = tex2D(_WaterTex, i.tilings.zw);// + tex2D(_WaterTex, i.tilings.zw);
@@ -189,6 +171,8 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				fresnel = (0.8 * fresnel + 0.7) * alpha;
 
 				albedo = lerp(albedo, reflection, _ReflectionTint);
+				//albedo = lerp(albedo, albedo + foam.rgb, (1-(nmap2.a/2)) );
+				albedo = lerp(albedo, albedo + foam.rgb, nmap2.a );
 				//return fixed4(albedo, 1);
 				half3 emission = albedo * (1 - fresnel);
 				albedo *= fresnel;
