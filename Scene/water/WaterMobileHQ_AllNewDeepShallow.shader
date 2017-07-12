@@ -8,6 +8,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 	{
 		_WaterTex ("Normal Map (RGB), Foam (A)", 2D) = "white" {}
 		_FoamTex ("Foam Map (RGB)", 2D) = "black" {}
+		_Cube ("Skybox", Cube) = "_Skybox" { }
 		//_NoiseTex ("Noise Map (RGB)", 2D) = "black" {}
 		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
@@ -18,6 +19,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		_SpeScale("Specular Scale",float) =1.0
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
 		_lightDir ("Light Dir(XYZ)", Vector) = (1.0, 1.0, 1.0, 1.0)
+		_ReflectionTint ("Reflection Tint", Range(0.0, 1.0)) = 0.8
 		_WaveWindSpeed ("Wave Wind Speed", Range(-1, 1)) = 0.1
 		_WaveHeightSpeed ("Wave Height Speed", Range(-1, 1)) = 0.1
 		_WaveWindScale("Wave Wind Scale",Range(0, 0.01)) = 0.003
@@ -51,6 +53,8 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			sampler2D_float _LastCameraDepthTexture;
 			sampler2D _WaterTex;
 			sampler2D _FoamTex;
+			samplerCUBE _Cube;
+
 			//sampler2D _NoiseTex;
 
 			half4 _ShallowColor;
@@ -62,6 +66,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			float _Shininess;
 			half4 _lightDir;
 			half4 _InvRanges;
+			float _ReflectionTint;
 
 			fixed _WaveWindSpeed;
 			fixed _WaveHeightSpeed;
@@ -135,14 +140,9 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float  objectZ		= i.screenPos.z;
 
 				fixed depthFactor   = saturate(abs(sceneZ - objectZ))* _DepthFactor;// ;
-				//half3 ranges = _InvRanges.xyz * depthFactor;
-				//half3 ranges = _InvRanges.xyz;
-
-				//ranges.y = saturate(ranges.y);
-				//fixed3 shallowColor = lerp();
-				fixed3 finalColor	= lerp(_ShallowColor, _DeepColor, depthFactor);
+				fixed3 albedo	= lerp(_ShallowColor, _DeepColor, depthFactor);
 				half alpha = saturate(_AlphaScale);
-				//return fixed4(finalColor, 1);
+				//return fixed4(albedo, 1);
 				// ÊÀ½çÎ»ÖÃ
 				float3 worldView = i.worldPos - _WorldSpaceCameraPos;
 
@@ -150,33 +150,58 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				half4 foam = tex2D(_FoamTex, i.tilings.zw);
 				// Calculate the object-space normal (Z-up)
 				half4 nmap = tex2D(_WaterTex, i.tilings.xy) ;//+ tex2D(_WaterTex, i.tilings.zw);
-				half4 nmap2 = tex2D(_WaterTex, i.tilings.xy);// + tex2D(_WaterTex, i.tilings.zw);
-				half3 Normal = nmap.xyz;// - 1.0;
-				half3 nNormal = normalize(Normal);
+				half4 nmap2 = tex2D(_WaterTex, i.tilings.zw);// + tex2D(_WaterTex, i.tilings.zw);
+				half3 Normal = nmap.xyz + nmap2.xyz - 1.0;
+				//half3 nNormal = normalize(Normal);
 
 				// Fake World space normal (Y-up)
 				half3 worldNormal = Normal.xzy;
 				worldNormal.z = -worldNormal.z;
 
+				albedo.rgb = lerp(albedo.rgb, albedo.rgb + foam.rgb, nmap2.a);
+				//return fixed4(albedo, 1);
+				// Dot product for fresnel effect
+				half fresnel =saturate( dot(-normalize(worldView), worldNormal));
+				//fresnel *=fresnel;
+				fresnel = 1-fresnel;
+
+				half3 reflection = texCUBE(_Cube, reflect(worldView, worldNormal)).rgb ;
+				// Always assume 20% reflection right off the bat, and make the fresnel fade out slower so there is more refraction overall
+				fresnel *= fresnel;
+				fresnel = (0.8 * fresnel + 0.7) * alpha;
+
+				albedo = lerp(albedo, reflection, _ReflectionTint);
+				//return fixed4(albedo, 1);
+				half3 emission = albedo * (1 - fresnel);
+				albedo *= fresnel;
+
+				half3 nNormal = normalize(Normal);
+				half  shininess = _Shininess * 128.0 + 4.0;
+
 				half3 lightDir = normalize(_lightDir.xyz);
-				half diffuseFactor = max(0.0, dot(nNormal, lightDir));
-				finalColor *= diffuseFactor;
-
+				//half diffuseFactor = max(0.0, dot(nNormal, -lightDir));
+				//return fixed4(albedo , alpha);
 				half reflectiveFactor = max(0.0, dot(-worldView, reflect(lightDir, nNormal)));
-				//half specularFactor = pow(reflectiveFactor, shininess) * _Specular*_SpeScale;
+				half specularFactor = pow(reflectiveFactor, shininess) * _Specular*_SpeScale;
 
-				half3 h = normalize (_lightDir.xyz + worldView);
-				half nh = max (0, dot (worldNormal, h));
-				half spec = pow (nh, _Shininess*128.0);
-				finalColor += _Specular.rgb * spec;
+				half4 c;
+				c.rgb = (albedo /** diffuseFactor*/ + _Specular * specularFactor);
+				//return fixed4(c.rgb, alpha);
+				c.rgb *= 2 * _LightScale;
+				c.a = alpha;
+				return c;
+				//half3 h = normalize (_lightDir.xyz + worldView);
+				//half nh = max (0, dot (worldNormal, h));
+				//half shininess = _Shininess * 250.0 + 4.0;
+				//half spec = pow (nh, shininess);
+				//finalColor += _Specular.rgb * spec;
 
-				//float depth = abs(sceneZ - objectZ);
-				//if(objectZ > sceneZ)
-				//    finalColor.rgb = half3(1, 1, 1); //- foam.a*4
-				//finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 );
-				//finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 - noise.r/2);
-				finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, nmap2.a);
-				return fixed4(finalColor.rgb * _LightScale, alpha);
+				////float depth = abs(sceneZ - objectZ);
+				////if(objectZ > sceneZ)
+				////    finalColor.rgb = half3(1, 1, 1); //- foam.a*4
+				////finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 );
+				////finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 - noise.r/2);
+				//return fixed4(finalColor.rgb * _LightScale, alpha);
 			}
 			ENDCG
 		}
