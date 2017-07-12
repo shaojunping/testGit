@@ -18,6 +18,10 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		_SpeScale("Specular Scale",float) =1.0
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
 		_lightDir ("Light Dir(XYZ)", Vector) = (1.0, 1.0, 1.0, 1.0)
+		_WaveWindSpeed ("Wave Wind Speed", Range(-1, 1)) = 0.1
+		_WaveHeightSpeed ("Wave Height Speed", Range(-1, 1)) = 0.1
+		_WaveWindScale("Wave Wind Scale",Range(0, 0.2)) = 0.03
+		_WaveHeightScale("Wave Height Scale",Range(0,2)) =0.5
 		_InvRanges ("Alpha OffSet(X), Depth OffSet(Y) ,Alpha Scale(Z),Amb Scale(W)", Vector) = (0.0, 0.5, 1.0, 1.0)
 	}
 
@@ -56,6 +60,11 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			half4 _lightDir;
 			half4 _InvRanges;
 
+			fixed _WaveWindSpeed;
+			fixed _WaveHeightSpeed;
+			half  _WaveWindScale;
+			half  _WaveHeightScale;
+
 			struct a2v
 			{
 				float4 vertex		:POSITION;
@@ -85,7 +94,13 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			v2f vert(a2v v)
 			{
 				v2f o;
-				UNITY_INITIALIZE_OUTPUT(v2f,o);
+				UNITY_INITIALIZE_OUTPUT(v2f, o);
+				float4 pos = v.vertex;
+				float waveOffset = sin(_Time.w * _WaveWindSpeed + pos.x) * _WaveWindScale;
+				float waveHeightOffset = sin(_Time.w * _WaveHeightSpeed + pos.z * 0.1) * _WaveHeightScale;
+				v.vertex.x += waveOffset;
+				v.vertex.y += waveHeightOffset;
+				//v.vertex.z += waveHeightOffset;
 				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
 
 				//float3 worldPos = mul (unity_ObjectToWorld, v.vertex).xyz;
@@ -116,7 +131,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
 
-				fixed depthFactor   = saturate((sceneZ - objectZ)) * _InvRanges.y;
+				fixed depthFactor   = saturate(abs(sceneZ - objectZ)) * _InvRanges.y;
 				//fixed3 shallowColor = lerp();
 				fixed3 finalColor	= lerp(_ShallowColor, _DeepColor, depthFactor);
 				//return fixed4(finalColor, 1);
