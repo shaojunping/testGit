@@ -105,7 +105,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 
 				float offset = frac(_Time.x * 0.5* _OffsetSpeed);
 				fixed2 tiling = o.worldPos.xz * _Tiling;
-				o.tilings.xy = tiling + offset;
+				o.tilings.xy = tiling + offset; //
 				o.tilings.zw = fixed2(-tiling.y, tiling.x) - offset;
 
 				return o;
@@ -126,9 +126,9 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				half4 noise = tex2D(_NoiseTex, i.tilings.xy);
 				half4 foam = tex2D(_FoamTex, i.tilings.zw);
 				// Calculate the object-space normal (Z-up)
-				half4 nmap = tex2D(_WaterTex, i.tilings.xy) + tex2D(_WaterTex, i.tilings.zw);
-				half4 nmap2 = tex2D(_WaterTex, i.tilings.xy) + tex2D(_WaterTex, i.tilings.zw);
-				half3 Normal = nmap.xyz - 1.0;
+				half4 nmap = tex2D(_WaterTex, i.tilings.xy) ;//+ tex2D(_WaterTex, i.tilings.zw);
+				half4 nmap2 = tex2D(_WaterTex, i.tilings.xy);// + tex2D(_WaterTex, i.tilings.zw);
+				half3 Normal = nmap.xyz;// - 1.0;
 				half3 nNormal = normalize(Normal);
 
 				// Fake World space normal (Y-up)
