@@ -8,7 +8,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 	{
 		_WaterTex ("Normal Map (RGB), Foam (A)", 2D) = "white" {}
 		_FoamTex ("Foam Map (RGB)", 2D) = "black" {}
-		_NoiseTex ("Noise Map (RGB)", 2D) = "black" {}
+		//_NoiseTex ("Noise Map (RGB)", 2D) = "black" {}
 		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
 		//_DepthFactor ("Depth Factor", Range(0, 6)) = 0.5
@@ -20,9 +20,12 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		_lightDir ("Light Dir(XYZ)", Vector) = (1.0, 1.0, 1.0, 1.0)
 		_WaveWindSpeed ("Wave Wind Speed", Range(-1, 1)) = 0.1
 		_WaveHeightSpeed ("Wave Height Speed", Range(-1, 1)) = 0.1
-		_WaveWindScale("Wave Wind Scale",Range(0, 0.2)) = 0.03
-		_WaveHeightScale("Wave Height Scale",Range(0,2)) =0.5
-		_InvRanges ("Alpha OffSet(X), Depth OffSet(Y) ,Alpha Scale(Z),Amb Scale(W)", Vector) = (0.0, 0.5, 1.0, 1.0)
+		_WaveWindScale("Wave Wind Scale",Range(0, 0.01)) = 0.003
+		_WaveHeightScale("Wave Height Scale",Range(0, 0.01)) =0.005
+		_DepthFactor("DepthFactor",Range(0, 2)) =0.8
+		_AlphaScale("Alpha Scale", Range(0, 1)) = 0.4
+		_LightScale("Ambient Scale", Range(0, 2)) = 1
+		//_InvRanges ("Alpha OffSet(X), Depth OffSet(Y) ,Alpha Scale(Z),Amb Scale(W)", Vector) = (0.0, 0.5, 1.0, 1.0)
 	}
 
 	SubShader
@@ -48,7 +51,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			sampler2D_float _LastCameraDepthTexture;
 			sampler2D _WaterTex;
 			sampler2D _FoamTex;
-			sampler2D _NoiseTex;
+			//sampler2D _NoiseTex;
 
 			half4 _ShallowColor;
 			half4 _DeepColor;
@@ -64,6 +67,10 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			fixed _WaveHeightSpeed;
 			half  _WaveWindScale;
 			half  _WaveHeightScale;
+
+			float _AlphaScale;
+			float _LightScale;
+			//float _DepthFactor;
 
 			struct a2v
 			{
@@ -85,10 +92,6 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				UNITY_FOG_COORDS(3)
 				// 屏幕位置
 				float4 screenPos : TEXCOORD2;
-				//fixed4 tilings :TEXCOORD6;
-				//float4 bumpUV		: TEXCOORD6;
-				// 用于修复GrasTexture反向问题
-				//float4 uvgrab : TEXCOORD6;
 			};
 
 			v2f vert(a2v v)
@@ -96,10 +99,10 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				v2f o;
 				UNITY_INITIALIZE_OUTPUT(v2f, o);
 				float4 pos = v.vertex;
-				float waveOffset = sin(_Time.w * _WaveWindSpeed + pos.x) * _WaveWindScale;
+				float waveOffset = sin(_Time.w * _WaveWindSpeed + pos.x * 0.1) * _WaveWindScale;
 				float waveHeightOffset = sin(_Time.w * _WaveHeightSpeed + pos.z * 0.1) * _WaveHeightScale;
-				v.vertex.x += waveOffset;
-				v.vertex.y += waveHeightOffset;
+				//v.vertex.x += waveOffset;
+				//v.vertex.y += waveHeightOffset;
 				//v.vertex.z += waveHeightOffset;
 				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
 
@@ -131,14 +134,19 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
 
-				fixed depthFactor   = saturate(abs(sceneZ - objectZ)) * _InvRanges.y;
+				fixed depthFactor   = saturate(abs(sceneZ - objectZ))* _DepthFactor;// ;
+				//half3 ranges = _InvRanges.xyz * depthFactor;
+				//half3 ranges = _InvRanges.xyz;
+
+				//ranges.y = saturate(ranges.y);
 				//fixed3 shallowColor = lerp();
 				fixed3 finalColor	= lerp(_ShallowColor, _DeepColor, depthFactor);
+				half alpha = saturate(_AlphaScale);
 				//return fixed4(finalColor, 1);
 				// 世界位置
 				float3 worldView = i.worldPos - _WorldSpaceCameraPos;
 
-				half4 noise = tex2D(_NoiseTex, i.tilings.xy);
+				//half4 noise = tex2D(_NoiseTex, i.tilings.xy);
 				half4 foam = tex2D(_FoamTex, i.tilings.zw);
 				// Calculate the object-space normal (Z-up)
 				half4 nmap = tex2D(_WaterTex, i.tilings.xy) ;//+ tex2D(_WaterTex, i.tilings.zw);
@@ -168,7 +176,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				//finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 );
 				//finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, (1-(nmap2.a/2)) - foam.a*4 - noise.r/2);
 				finalColor.rgb = lerp(finalColor.rgb, finalColor.rgb + foam.rgb, nmap2.a);
-				return fixed4(finalColor.rgb * _InvRanges.w, 0.85);
+				return fixed4(finalColor.rgb * _LightScale, alpha);
 			}
 			ENDCG
 		}
