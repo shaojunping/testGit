@@ -56,7 +56,7 @@ Shader "TSHD/WaterMobileHQ_All"
 	
         half4 c;
         //c.rgb = (s.Albedo * diffuseFactor + _Specular.rgb * specularFactor) * _LightColor0.rgb;
-        c.rgb = (s.Albedo * diffuseFactor + _Specular.rgb * specularFactor) ;
+        c.rgb = (s.Albedo * diffuseFactor + _Specular.rgb * specularFactor);
         //c.rgb *= (atten * 2.0)*_InvRanges.w;
         c.rgb *= 2*_InvRanges.w;
         c.a = s.Alpha;
@@ -351,7 +351,7 @@ SubShader
             float3 mainC =tex2D(_DeepTex,IN.uv_MainTex).rgb;
             float depth =mainC.g;
 
-// Calculate the depth ranges (X = Alpha, Y = Color Depth)
+			// Calculate the depth ranges (X = Alpha, Y = Color Depth)
             half3 ranges = _InvRanges.xyz * depth;
             ranges.y = saturate(1.0 - ranges.y);
 

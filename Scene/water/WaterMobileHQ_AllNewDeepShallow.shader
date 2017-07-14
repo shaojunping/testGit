@@ -9,14 +9,12 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		[NoScaleOffset]_WaterTex ("Normal Map (RGB), Foam (A)", 2D) = "white" {}
 		[NoScaleOffset]_FoamTex ("Foam Map (RGB)", 2D) = "black" {}
 		_Cube ("Skybox", Cube) = "_Skybox" { }
-		//_NoiseTex ("Noise Map (RGB)", 2D) = "black" {}
 		_ShallowColor ("Shallow Color", Color) = (1,1,1,1)
 		_DeepColor ("Deep Color", Color) = (0,0,0,0)
-		//_DepthFactor ("Depth Factor", Range(0, 6)) = 0.5
 		_OffsetSpeedX("Offset SpeedX",float) =1.0
 		_OffsetSpeedY("Offset SpeedY",float) =1.0
-		_Tiling ("Normal Tiling", Range(0.025, 0.5)) = 0.025
-		_FoamTiling ("Foam Tiling", Range(0.025, 5)) = 0.025
+		_Tiling ("Normal Tiling", Range(0.025, 0.2)) = 0.025
+		_FoamTiling ("Foam Tiling", Range(0.025, 0.2)) = 0.025
 		_Specular ("Specular", Color) = (0,0,0,0)
 		_SpeScale("Specular Scale",float) =1.0
 		_Shininess ("Shininess", Range(0.01, 1.0)) = 1.0
@@ -34,6 +32,7 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 
 	SubShader
 	{
+		//LOD 300
 		Pass
 		{
 			Tags { "Queue" = "Transparent" "IgnoreProjector"="True" "RenderType"="Opaque" }
@@ -56,23 +55,23 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 			sampler2D_float _LastCameraDepthTexture;
 			sampler2D _WaterTex;
 			sampler2D _FoamTex;
-			float4    _WaterTex_ST;
-			float4    _FoamTex_ST;
+			//float4    _WaterTex_ST;
+			//float4    _FoamTex_ST;
 			samplerCUBE _Cube;
 
 			//sampler2D _NoiseTex;
 
-			half4 _ShallowColor;
-			half4 _DeepColor;
+			fixed4 _ShallowColor;
+			fixed4 _DeepColor;
 			half _OffsetSpeedX;
 			half _OffsetSpeedY;
 			
 			half4 _Specular;
-			fixed _SpeScale;
+			half _SpeScale;
 			float _Shininess;
 			half4 _lightDir;
 			half4 _InvRanges;
-			float _ReflectionTint;
+			half _ReflectionTint;
 
 			fixed _WaveWindSpeed;
 			fixed _WaveHeightSpeed;
@@ -139,9 +138,9 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				float  sceneZ		= LinearEyeDepth (tex2Dproj(_LastCameraDepthTexture, UNITY_PROJ_COORD(i.screenPos)).r);
 				float  objectZ		= i.screenPos.z;
 
-				fixed depthFactor   = saturate(abs(sceneZ - objectZ))* _DepthFactor;// ;
+				fixed depthFactor   = abs(sceneZ - objectZ) * _DepthFactor;// ;
 				fixed3 albedo	= lerp(_ShallowColor, _DeepColor, depthFactor);
-				half alpha = saturate(_AlphaScale);
+				half alpha = _AlphaScale;
 				//return fixed4(albedo, 1);
 				//  ¿ΩÁŒª÷√
 				float3 worldView = i.worldPos - _WorldSpaceCameraPos;
@@ -155,37 +154,36 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 				//half3 nNormal = normalize(Normal);
 
 				// Fake World space normal (Y-up)
-				half3 worldNormal = Normal.xzy;
-				worldNormal.z = -worldNormal.z;
+				//half3 worldNormal = Normal.xzy;
+				//worldNormal.z = -worldNormal.z;
+				half3 nNormal = normalize(Normal);
 
-				albedo.rgb = lerp(albedo.rgb, albedo.rgb + foam.rgb, nmap2.a);
+				albedo.rgb = lerp(albedo.rgb, albedo.rgb + foam.rgb, foam.a);
 				//return fixed4(albedo, 1);
 				// Dot product for fresnel effect
-				half fresnel =saturate( dot(-normalize(worldView), worldNormal));
-				//fresnel *=fresnel;
+				half fresnel = abs( dot(normalize(worldView), nNormal));
 				fresnel = 1-fresnel;
 
-				half3 reflection = texCUBE(_Cube, reflect(worldView, worldNormal)).rgb ;
+				half3 reflection = texCUBE(_Cube, reflect(worldView, Normal)).rgb ;
 				// Always assume 20% reflection right off the bat, and make the fresnel fade out slower so there is more refraction overall
 				fresnel *= fresnel;
 				fresnel = (0.8 * fresnel + 0.7) * alpha;
 
 				albedo = lerp(albedo, reflection, _ReflectionTint);
 				//albedo = lerp(albedo, albedo + foam.rgb, (1-(nmap2.a/2)) );
-				albedo = lerp(albedo, albedo + foam.rgb, nmap2.a );
+				//albedo = lerp(albedo, albedo + foam.rgb, foam.a );
 				//return fixed4(albedo, 1);
 				half3 emission = albedo * (1 - fresnel);
 				albedo *= fresnel;
 
-				half3 nNormal = normalize(worldNormal);
 				half  shininess = _Shininess * 128.0;
 
 				half3 lightDir = normalize(_lightDir.xyz);
-				half diffuseFactor = max(0.0, dot(-nNormal, -lightDir));
+				half diffuseFactor = abs(dot(nNormal, lightDir));
 				//return fixed4(albedo , alpha);
-				half reflectiveFactor = max(0.0, dot(worldView, reflect(lightDir, nNormal)));
+				//half reflectiveFactor = abs(dot(worldView, reflect(lightDir, nNormal)));
 				half3 h = normalize(lightDir + worldView);
-				float nh = max(0, dot(-nNormal, h));
+				float nh = abs(dot(nNormal, h));
 				half specularFactor = pow(nh, shininess) * _Specular*_SpeScale;
 				//return half4(albedo, alpha);
 				half4 c;
@@ -212,5 +210,9 @@ Shader "TSHD/WaterMobileHQ_All_NewDeepShallow"
 		}
 	}
 	
+	//SubShader
+	//{
+	//	Lod 200
+	//}
 	FallBack "Legacy Shaders/Transparent/VertexLit"
 }
